@@ -1,0 +1,174 @@
+-- Check for table that is shared between executions.
+if not shared then
+	return warn("No shared, no script.")
+end
+
+-- Destroy previous instance if it exists.
+if shared.RaiseMeiMei then
+	shared.RaiseMeiMei.destroy()
+end
+
+-- Services.
+local playersService = game:GetService("Players")
+local runService = game:GetService("RunService")
+
+local localPlayer = playersService.LocalPlayer
+
+-- State.
+local connections = {}
+local enabled = { autoClick = false, autoCorn = false }
+
+-- Cleanup function.
+local function destroy()
+	for _, c in ipairs(connections) do
+		c:Disconnect()
+	end
+	connections = {}
+	enabled.autoClick = false
+	enabled.autoCorn = false
+
+	local old = game:GetService("CoreGui"):FindFirstChild("RaiseMeiMei")
+	if old then old:Destroy() end
+end
+
+shared.RaiseMeiMei = { destroy = destroy }
+
+-- Find PetClick under workspace.
+local function findPetClick()
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj.Name == "PetClick" and obj:IsA("ClickDetector") then
+			return obj
+		end
+	end
+end
+
+-- Auto Click logic.
+local autoClickConn = nil
+
+local function startAutoClick()
+	local c = runService.Heartbeat:Connect(function()
+		local detector = findPetClick()
+		if not detector then return end
+		detector.MaxActivationDistance = 9999
+		fireclickdetector(detector)
+	end)
+	table.insert(connections, c)
+	return c
+end
+
+-- Auto Find Corn logic.
+local autoCornConn = nil
+
+local function startAutoCorn()
+	local c = runService.Heartbeat:Connect(function()
+		local acornHunt = workspace:FindFirstChild("AcornHunt")
+		if not acornHunt then return end
+
+		local hrp = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if not hrp then return end
+
+		-- Fire regular Acorn.
+		local acorn = acornHunt:FindFirstChild("Acorn")
+		if acorn then
+			local hit = acorn:FindFirstChild("Hit")
+			if hit then
+				firetouchinterest(hit, hrp, 0)
+			end
+		end
+
+		-- Fire GoldenAcorn.
+		local goldenAcorn = acornHunt:FindFirstChild("GoldenAcorn")
+		if goldenAcorn then
+			local hit = goldenAcorn:FindFirstChild("Hit")
+			if hit then
+				firetouchinterest(hit, hrp, 0)
+			end
+		end
+	end)
+	table.insert(connections, c)
+	return c
+end
+
+-- GUI construction.
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "RaiseMeiMei"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = game:GetService("CoreGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 220, 0, 100)
+frame.Position = UDim2.new(0.5, -110, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = frame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 25)
+title.BackgroundTransparency = 1
+title.Text = "Raise a Mei Mei"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 14
+title.Font = Enum.Font.GothamBold
+title.Parent = frame
+
+-- Helper to create toggle buttons.
+local function makeToggle(text, yPos)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 180, 0, 28)
+	btn.Position = UDim2.new(0.5, -90, 0, yPos)
+	btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	btn.Text = text
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.TextSize = 13
+	btn.Font = Enum.Font.Gotham
+	btn.BorderSizePixel = 0
+	btn.Parent = frame
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 6)
+	c.Parent = btn
+	return btn
+end
+
+local autoClickBtn = makeToggle("Auto Click", 28)
+local autoCornBtn = makeToggle("Auto Find Corn", 62)
+
+-- Auto Click toggle.
+autoClickBtn.MouseButton1Click:Connect(function()
+	enabled.autoClick = not enabled.autoClick
+	if enabled.autoClick then
+		autoClickBtn.Text = "Auto Click: ON"
+		autoClickBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
+		autoClickConn = startAutoClick()
+	else
+		autoClickBtn.Text = "Auto Click"
+		autoClickBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+		if autoClickConn then
+			autoClickConn:Disconnect()
+			autoClickConn = nil
+		end
+	end
+end)
+
+-- Auto Find Corn toggle.
+autoCornBtn.MouseButton1Click:Connect(function()
+	enabled.autoCorn = not enabled.autoCorn
+	if enabled.autoCorn then
+		autoCornBtn.Text = "Auto Find Corn: ON"
+		autoCornBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
+		autoCornConn = startAutoCorn()
+	else
+		autoCornBtn.Text = "Auto Find Corn"
+		autoCornBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+		if autoCornConn then
+			autoCornConn:Disconnect()
+			autoCornConn = nil
+		end
+	end
+end)
