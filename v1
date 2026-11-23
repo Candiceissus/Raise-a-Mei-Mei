@@ -16,7 +16,7 @@ local localPlayer = playersService.LocalPlayer
 
 -- State.
 local connections = {}
-local enabled = { autoClick = false, autoCorn = false }
+local enabled = { autoClick = false, autoAcorn = false }
 
 -- Cleanup function.
 local function destroy()
@@ -25,7 +25,7 @@ local function destroy()
 	end
 	connections = {}
 	enabled.autoClick = false
-	enabled.autoCorn = false
+	enabled.autoAcorn = false
 
 	local old = game:GetService("CoreGui"):FindFirstChild("RaiseMeiMei")
 	if old then old:Destroy() end
@@ -56,10 +56,10 @@ local function startAutoClick()
 	return c
 end
 
--- Auto Find Corn logic.
-local autoCornConn = nil
+-- Auto Find Acorn logic.
+local autoAcornConn = nil
 
-local function startAutoCorn()
+local function startAutoAcorn()
 	local c = runService.Heartbeat:Connect(function()
 		local acornHunt = workspace:FindFirstChild("AcornHunt")
 		if not acornHunt then return end
@@ -137,7 +137,7 @@ local function makeToggle(text, yPos)
 end
 
 local autoClickBtn = makeToggle("Auto Click", 28)
-local autoCornBtn = makeToggle("Auto Find Corn", 62)
+local autoAcornBtn = makeToggle("Auto Find Acorn", 62)
 
 -- Auto Click toggle.
 autoClickBtn.MouseButton1Click:Connect(function()
@@ -156,19 +156,19 @@ autoClickBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Auto Find Corn toggle.
-autoCornBtn.MouseButton1Click:Connect(function()
-	enabled.autoCorn = not enabled.autoCorn
-	if enabled.autoCorn then
-		autoCornBtn.Text = "Auto Find Corn: ON"
-		autoCornBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
-		autoCornConn = startAutoCorn()
+-- Auto Find Acorn toggle.
+autoAcornBtn.MouseButton1Click:Connect(function()
+	enabled.autoAcorn = not enabled.autoAcorn
+	if enabled.autoAcorn then
+		autoAcornBtn.Text = "Auto Find Acorn: ON"
+		autoAcornBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
+		autoAcornConn = startAutoAcorn()
 	else
-		autoCornBtn.Text = "Auto Find Corn"
-		autoCornBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-		if autoCornConn then
-			autoCornConn:Disconnect()
-			autoCornConn = nil
+		autoAcornBtn.Text = "Auto Find Acorn"
+		autoAcornBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+		if autoAcornConn then
+			autoAcornConn:Disconnect()
+			autoAcornConn = nil
 		end
 	end
 end)
