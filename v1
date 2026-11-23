@@ -67,26 +67,71 @@ local function startAutoAcorn()
 		local hrp = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return end
 
-		-- Fire regular Acorn.
 		local acorn = acornHunt:FindFirstChild("Acorn")
 		if acorn then
 			local hit = acorn:FindFirstChild("Hit")
-			if hit then
-				firetouchinterest(hit, hrp, 0)
-			end
+			if hit then firetouchinterest(hit, hrp, 0) end
 		end
 
-		-- Fire GoldenAcorn.
 		local goldenAcorn = acornHunt:FindFirstChild("GoldenAcorn")
 		if goldenAcorn then
 			local hit = goldenAcorn:FindFirstChild("Hit")
-			if hit then
-				firetouchinterest(hit, hrp, 0)
-			end
+			if hit then firetouchinterest(hit, hrp, 0) end
 		end
 	end)
 	table.insert(connections, c)
 	return c
+end
+
+-- TP to each balloon, fire it, then return.
+local function popAllBalloons(btn)
+	btn.Text = "Popping..."
+	btn.BackgroundColor3 = Color3.fromRGB(100, 30, 30)
+	btn.Active = false
+
+	local character = localPlayer.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		btn.Text = "Pop Balloons"
+		btn.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
+		btn.Active = true
+		return
+	end
+
+	-- Save original position.
+	local originalCFrame = hrp.CFrame
+
+	local grandOpening = workspace:FindFirstChild("GrandOpening")
+	if grandOpening then
+		for i = 1, 8 do
+			local balloon = grandOpening:FindFirstChild("Balloon" .. i)
+			if balloon then
+				local cd = nil
+				for _, obj in ipairs(balloon:GetDescendants()) do
+					if obj:IsA("ClickDetector") then
+						cd = obj
+						break
+					end
+				end
+
+				if cd then
+					-- TP to balloon, wait to settle, then fire.
+					hrp.CFrame = CFrame.new(cd.Parent.Position)
+					task.wait(0.5)
+					fireclickdetector(cd)
+					task.wait(1)
+				end
+			end
+		end
+	end
+
+	-- Return to original position.
+	hrp.CFrame = originalCFrame
+
+	task.wait(0.5)
+	btn.Text = "Pop Balloons"
+	btn.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
+	btn.Active = true
 end
 
 -- GUI construction.
@@ -97,7 +142,7 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = game:GetService("CoreGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 220, 0, 100)
+frame.Size = UDim2.new(0, 220, 0, 135)
 frame.Position = UDim2.new(0.5, -110, 0, 20)
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.BorderSizePixel = 0
@@ -118,12 +163,11 @@ title.TextSize = 14
 title.Font = Enum.Font.GothamBold
 title.Parent = frame
 
--- Helper to create toggle buttons.
-local function makeToggle(text, yPos)
+local function makeButton(text, yPos, color)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0, 180, 0, 28)
 	btn.Position = UDim2.new(0.5, -90, 0, yPos)
-	btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	btn.BackgroundColor3 = color or Color3.fromRGB(50, 50, 50)
 	btn.Text = text
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.TextSize = 13
@@ -136,10 +180,10 @@ local function makeToggle(text, yPos)
 	return btn
 end
 
-local autoClickBtn = makeToggle("Auto Click", 28)
-local autoAcornBtn = makeToggle("Auto Find Acorn", 62)
+local autoClickBtn = makeButton("Auto Click", 28)
+local autoAcornBtn = makeButton("Auto Find Acorn", 62)
+local balloonBtn = makeButton("Pop Balloons", 96, Color3.fromRGB(160, 40, 40))
 
--- Auto Click toggle.
 autoClickBtn.MouseButton1Click:Connect(function()
 	enabled.autoClick = not enabled.autoClick
 	if enabled.autoClick then
@@ -156,7 +200,6 @@ autoClickBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Auto Find Acorn toggle.
 autoAcornBtn.MouseButton1Click:Connect(function()
 	enabled.autoAcorn = not enabled.autoAcorn
 	if enabled.autoAcorn then
@@ -171,4 +214,8 @@ autoAcornBtn.MouseButton1Click:Connect(function()
 			autoAcornConn = nil
 		end
 	end
+end)
+
+balloonBtn.MouseButton1Click:Connect(function()
+	task.spawn(popAllBalloons, balloonBtn)
 end)
