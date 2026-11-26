@@ -11,6 +11,7 @@ end
 -- Services.
 local playersService = game:GetService("Players")
 local runService = game:GetService("RunService")
+local virtualUser = game:GetService("VirtualUser") -- [ANTI-AFK]
 
 local localPlayer = playersService.LocalPlayer
 
@@ -32,9 +33,37 @@ local function destroy()
 
 	local old = game:GetService("CoreGui"):FindFirstChild("RaiseMeiMei")
 	if old then old:Destroy() end
+
+	shared.RaiseMeiMei = nil -- [ANTI-AFK] stop the watchdog loop
 end
 
 shared.RaiseMeiMei = { destroy = destroy }
+
+-- [ANTI-AFK] 24/7 anti-AFK. Uses Player.Idled (Roblox's own 20-min idle timer)
+-- and self-heals if the connection is ever lost.
+do
+	local antiAfkConn
+
+	local function kickGuard()
+		if antiAfkConn and antiAfkConn.Connected then return end
+		antiAfkConn = localPlayer.Idled:Connect(function()
+			virtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+			task.wait(1)
+			virtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+		end)
+		table.insert(connections, antiAfkConn)
+	end
+
+	kickGuard()
+
+	-- Watchdog: re-arm every few seconds until the script is destroyed.
+	task.spawn(function()
+		while shared.RaiseMeiMei do
+			task.wait(5)
+			kickGuard()
+		end
+	end)
+end
 
 -- Find PetClick under workspace.
 local function findPetClick()
@@ -102,7 +131,7 @@ local function startAutoCrystal()
 		if not hrp then return end
 
 		local targetBasePart = nil
-		
+
 		for _, child in ipairs(crystalsFolder:GetChildren()) do
 			if child.Name == "Crystal" then
 				local basePart = child:FindFirstChild("Base")
@@ -118,20 +147,20 @@ local function startAutoCrystal()
 		isCollectingCrystal = true
 		task.spawn(function()
 			local originalCFrame = hrp.CFrame
-			
+
 			-- Teleport to the crystal.
 			hrp.CFrame = CFrame.new(targetBasePart.Position + Vector3.new(0, 3, 0))
 			task.wait(0.2)
-			
+
 			-- Trigger the touch.
 			firetouchinterest(targetBasePart, hrp, 0)
 			task.wait(0.5)
-			
+
 			-- Return to original spot.
 			if hrp and hrp.Parent then
 				hrp.CFrame = originalCFrame
 			end
-			
+
 			isCollectingCrystal = false
 		end)
 	end)
