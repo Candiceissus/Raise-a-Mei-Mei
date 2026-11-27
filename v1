@@ -13,6 +13,7 @@ local playersService = game:GetService("Players")
 local runService = game:GetService("RunService")
 local virtualUser = game:GetService("VirtualUser") -- [ANTI-AFK]
 local tweenService = game:GetService("TweenService")
+local soundService = game:GetService("SoundService")
 
 local localPlayer = playersService.LocalPlayer
 
@@ -70,8 +71,20 @@ do
 	end)
 end
 
+-- [DING SOUND]
+local function playDing()
+	local sound = Instance.new("Sound")
+	sound.SoundId = "rbxassetid://12221967" -- Classic Roblox ding
+	sound.Volume = 0.5
+	sound.Parent = soundService
+	sound:Play()
+	task.delay(3, function()
+		sound:Destroy()
+	end)
+end
+
 -- =========================================================================
--- [ANTI-CHEAT BYPASS]
+-- [ANTI-CHEAT BYPASS & SPOOFING]
 -- =========================================================================
 
 -- 1. Silently destroy any Anti-Cheat scripts the game loaded
@@ -79,7 +92,7 @@ task.spawn(function()
 	for _, v in ipairs(game:GetDescendants()) do
 		if v:IsA("LocalScript") or v:IsA("Script") then
 			local name = v.Name:lower()
-			if name:find("anti") or name:find("cheat") or name:find("security") then
+			if name:find("anti") or name:find("cheat") or name:find("security") or name:find("check") then
 				pcall(function() v:Destroy() end)
 			end
 		end
@@ -98,13 +111,29 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
 	return oldNamecall(self, ...)
 end))
 
--- 3. Hook __index to spoof your WalkSpeed to the server
+-- 3. Hook __index to spoof WalkSpeed (prevents local speed checks)
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
 	if key == "WalkSpeed" and self:IsA("Humanoid") then
 		return 16 
 	end
 	return oldIndex(self, key)
+end))
+
+-- 4. Hook Vector3.Magnitude to spoof distance checks (prevents "moving too fast" detection)
+local v3 = Vector3.new()
+local oldV3Index
+oldV3Index = hookmetamethod(v3, "__index", newcclosure(function(self, key)
+	if not checkcaller() and tostring(key) == "Magnitude" then
+		local script = getcallingscript()
+		if script then
+			local name = tostring(script):lower()
+			if name:find("anti") or name:find("cheat") or name:find("check") or name:find("dist") then
+				return 0 
+			end
+		end
+	end
+	return oldV3Index(self, key)
 end))
 
 -- =========================================================================
@@ -117,7 +146,6 @@ local function findPetClick()
 	
 	cachedPetClick = nil
 	
-	-- 1. Use the exact path you provided
 	local meiMeiStuff = workspace:FindFirstChild("MeiMeiStuff")
 	if meiMeiStuff then
 		local meiMei = meiMeiStuff:FindFirstChild("MeiMei")
@@ -133,7 +161,6 @@ local function findPetClick()
 		end
 	end
 
-	-- 2. Fallback: Search everything for PetClick (if something changes)
 	for _, obj in ipairs(workspace:GetDescendants()) do
 		if obj.Name == "PetClick" and obj:IsA("ClickDetector") then
 			cachedPetClick = obj
@@ -142,7 +169,7 @@ local function findPetClick()
 	end
 end
 
--- Auto Click logic. (Throttled to 20 clicks/sec)
+-- Auto Click logic.
 local autoClickConn = nil
 local function startAutoClick()
 	local c = runService.Heartbeat:Connect(function()
@@ -158,7 +185,7 @@ local function startAutoClick()
 	return c
 end
 
--- Auto Unpackage logic. (Throttled to 10 scans/sec)
+-- Auto Unpackage logic.
 local autoUnpackageConn = nil
 local function startAutoUnpackage()
 	local c = runService.Heartbeat:Connect(function()
@@ -186,7 +213,7 @@ local function startAutoUnpackage()
 	return c
 end
 
--- Auto Find Acorn logic. (Throttled to 10 touches/sec)
+-- Auto Find Acorn logic.
 local autoAcornConn = nil
 local function startAutoAcorn()
 	local c = runService.Heartbeat:Connect(function()
@@ -215,7 +242,7 @@ local function startAutoAcorn()
 	return c
 end
 
--- Auto Collect Crystal logic. (Throttled to search 5 times/sec)
+-- Auto Collect Crystal logic. (Nearest Target)
 local autoCrystalConn = nil
 
 local function startAutoCrystal()
@@ -232,49 +259,44 @@ local function startAutoCrystal()
 		if not hrp then return end
 
 		local targetBasePart = nil
+		local closestDistance = math.huge
+
+		local function checkTarget(part)
+			if part and part:IsA("BasePart") and part.Transparency < 0.9 then
+				local dist = (hrp.Position - part.Position).Magnitude
+				if dist < closestDistance then
+					closestDistance = dist
+					targetBasePart = part
+				end
+			end
+		end
 
 		-- Check Portraits
 		local portraitsFolder = palace:FindFirstChild("Portraits")
 		if portraitsFolder then
 			for _, portrait in ipairs(portraitsFolder:GetChildren()) do
 				if portrait.Name == "Portrait" then
-					local canvas = portrait:FindFirstChild("Canvas")
-					if canvas and canvas:IsA("BasePart") and canvas.Transparency < 0.9 then
-						targetBasePart = canvas
-						break
-					end
+					checkTarget(portrait:FindFirstChild("Canvas"))
 				end
 			end
 		end
 
 		-- Check Meteors
-		if not targetBasePart then
-			local meteorsFolder = palace:FindFirstChild("Meteors")
-			if meteorsFolder then
-				for _, meteor in ipairs(meteorsFolder:GetChildren()) do
-					if meteor.Name == "Meteor" then
-						local mainPart = meteor:FindFirstChildWhichIsA("BasePart")
-						if mainPart and mainPart.Transparency < 0.9 then
-							targetBasePart = mainPart
-							break
-						end
-					end
+		local meteorsFolder = palace:FindFirstChild("Meteors")
+		if meteorsFolder then
+			for _, meteor in ipairs(meteorsFolder:GetChildren()) do
+				if meteor.Name == "Meteor" then
+					checkTarget(meteor:FindFirstChildWhichIsA("BasePart"))
 				end
 			end
 		end
 
 		-- Check Crystals
-		if not targetBasePart then
-			local crystalsFolder = palace:FindFirstChild("Crystals")
-			if crystalsFolder then
-				for _, child in ipairs(crystalsFolder:GetChildren()) do
-					if child.Name == "Crystal" then
-						local basePart = child:FindFirstChild("Base")
-						if basePart and basePart:IsA("BasePart") and basePart.Transparency < 0.9 then
-							targetBasePart = basePart
-							break
-						end
-					end
+		local crystalsFolder = palace:FindFirstChild("Crystals")
+		if crystalsFolder then
+			for _, child in ipairs(crystalsFolder:GetChildren()) do
+				if child.Name == "Crystal" then
+					checkTarget(child:FindFirstChild("Base"))
 				end
 			end
 		end
@@ -287,7 +309,7 @@ local function startAutoCrystal()
 			local targetCFrame = CFrame.new(targetBasePart.Position + Vector3.new(0, 3, 0))
 			
 			local distance = (originalCFrame.Position - targetCFrame.Position).Magnitude
-			local speed = 350 
+			local speed = 48 
 			local duration = distance / speed
 			
 			local tween = tweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
@@ -403,7 +425,6 @@ local function makeButton(text, yPos, color)
 	return btn
 end
 
--- Layout updated
 local autoClickBtn = makeButton("Auto Click", 28)
 local autoAcornBtn = makeButton("Auto Find Acorn", 62)
 local autoCrystalBtn = makeButton("Auto Collect Crystal", 96)
@@ -476,4 +497,61 @@ end)
 
 balloonBtn.MouseButton1Click:Connect(function()
 	task.spawn(popAllBalloons, balloonBtn)
+end)
+
+-- =========================================================================
+-- [NOTIFICATION BAR & SOUND]
+-- =========================================================================
+task.spawn(function()
+	-- Play the ding sound
+	playDing()
+
+	local notifFrame = Instance.new("Frame")
+	notifFrame.Name = "Notification"
+	notifFrame.Size = UDim2.new(0, 240, 0, 60) 
+	notifFrame.Position = UDim2.new(1, -250, 1, -100) 
+	notifFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	notifFrame.BackgroundTransparency = 1
+	notifFrame.BorderSizePixel = 0
+	notifFrame.Parent = screenGui
+
+	local notifCorner = Instance.new("UICorner")
+	notifCorner.CornerRadius = UDim.new(0, 8)
+	notifCorner.Parent = notifFrame
+
+	local notifScale = Instance.new("UIScale")
+	notifScale.Scale = 0.85 
+	notifScale.Parent = notifFrame
+
+	local notifStroke = Instance.new("UIStroke")
+	notifStroke.Color = Color3.fromRGB(0, 180, 80)
+	notifStroke.Transparency = 1
+	notifStroke.Thickness = 2
+	notifStroke.Parent = notifFrame
+
+	local notifText = Instance.new("TextLabel")
+	notifText.Size = UDim2.new(1, -20, 1, -10)
+	notifText.Position = UDim2.new(0, 10, 0, 5)
+	notifText.BackgroundTransparency = 1
+	notifText.Text = "⚠️ Auto Find Crystal maybe slow\ndue to the new anti TP"
+	notifText.TextColor3 = Color3.fromRGB(255, 255, 255)
+	notifText.TextTransparency = 1
+	notifText.TextSize = 13
+	notifText.Font = Enum.Font.GothamMedium
+	notifText.TextWrapped = true
+	notifText.TextXAlignment = Enum.TextXAlignment.Left
+	notifText.Parent = notifFrame
+
+	tweenService:Create(notifFrame, TweenInfo.new(0.5), {BackgroundTransparency = 0.1}):Play()
+	tweenService:Create(notifStroke, TweenInfo.new(0.5), {Transparency = 0.3}):Play()
+	tweenService:Create(notifText, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+
+	task.wait(10)
+
+	tweenService:Create(notifFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+	tweenService:Create(notifStroke, TweenInfo.new(0.5), {Transparency = 1}):Play()
+	tweenService:Create(notifText, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+
+	task.wait(0.5)
+	notifFrame:Destroy()
 end)
