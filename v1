@@ -20,7 +20,12 @@ local localPlayer = playersService.LocalPlayer
 local connections = {}
 local enabled = { autoClick = false, autoAcorn = false, autoCrystal = false }
 local isCollectingCrystal = false
-local cachedPetClick = nil -- Used to stop the massive lag spike
+local cachedPetClick = nil
+
+-- Throttle timers
+local lastClickTime = 0
+local lastAcornTime = 0
+local lastCrystalSearch = 0
 
 -- Cleanup function.
 local function destroy()
@@ -84,9 +89,8 @@ local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
 	local method = getnamecallmethod()
 	
-	-- Block the anti-cheat from kicking you
 	if method == "Kick" and self == localPlayer then
-		return -- Ignore the kick
+		return
 	end
 	
 	return oldNamecall(self, ...)
@@ -96,7 +100,7 @@ end))
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
 	if key == "WalkSpeed" and self:IsA("Humanoid") then
-		return 16 -- Tell the server we are walking at default speed
+		return 16 
 	end
 	return oldIndex(self, key)
 end))
@@ -105,27 +109,29 @@ end))
 
 -- Find the ClickDetector for the BIG MeiMei, fallback to PetClick
 local function findPetClick()
-	-- If we already have it cached and it's still there, use it
 	if cachedPetClick and cachedPetClick.Parent then
 		return cachedPetClick
 	end
 	
 	cachedPetClick = nil
 	
-	-- 1. Prioritize the big MeiMei
+	-- 1. Use the exact path you provided
 	local meiMeiStuff = workspace:FindFirstChild("MeiMeiStuff")
 	if meiMeiStuff then
-		local bigMeiMei = meiMeiStuff:FindFirstChild("MeiMei")
-		if bigMeiMei then
-			local cd = bigMeiMei:FindFirstChildWhichIsA("ClickDetector", true)
-			if cd then
-				cachedPetClick = cd
-				return cd
+		local meiMei = meiMeiStuff:FindFirstChild("MeiMei")
+		if meiMei then
+			local body = meiMei:FindFirstChild("Body")
+			if body then
+				local cd = body:FindFirstChild("PetClick")
+				if cd and cd:IsA("ClickDetector") then
+					cachedPetClick = cd
+					return cd
+				end
 			end
 		end
 	end
 
-	-- 2. Fallback: Search everything for PetClick (in case big one is missing)
+	-- 2. Fallback: Search everything for PetClick (if something changes)
 	for _, obj in ipairs(workspace:GetDescendants()) do
 		if obj.Name == "PetClick" and obj:IsA("ClickDetector") then
 			cachedPetClick = obj
@@ -134,10 +140,13 @@ local function findPetClick()
 	end
 end
 
--- Auto Click logic.
+-- Auto Click logic. (Throttled to 20 clicks/sec)
 local autoClickConn = nil
 local function startAutoClick()
 	local c = runService.Heartbeat:Connect(function()
+		if os.clock() - lastClickTime < 0.05 then return end
+		lastClickTime = os.clock()
+		
 		local detector = findPetClick()
 		if not detector then return end
 		detector.MaxActivationDistance = 9999
@@ -147,10 +156,13 @@ local function startAutoClick()
 	return c
 end
 
--- Auto Find Acorn logic.
+-- Auto Find Acorn logic. (Throttled to 10 touches/sec)
 local autoAcornConn = nil
 local function startAutoAcorn()
 	local c = runService.Heartbeat:Connect(function()
+		if os.clock() - lastAcornTime < 0.1 then return end
+		lastAcornTime = os.clock()
+		
 		local acornHunt = workspace:FindFirstChild("AcornHunt")
 		if not acornHunt then return end
 
@@ -173,12 +185,14 @@ local function startAutoAcorn()
 	return c
 end
 
--- Auto Collect Crystal logic. (Optimized Fast Tween)
+-- Auto Collect Crystal logic. (Throttled to search 5 times/sec)
 local autoCrystalConn = nil
 
 local function startAutoCrystal()
 	local c = runService.Heartbeat:Connect(function()
 		if isCollectingCrystal then return end
+		if os.clock() - lastCrystalSearch < 0.2 then return end 
+		lastCrystalSearch = os.clock()
 
 		local palace = workspace:FindFirstChild("MeiMeiPalaceLocal")
 		if not palace then return end
@@ -242,7 +256,6 @@ local function startAutoCrystal()
 			local originalCFrame = hrp.CFrame
 			local targetCFrame = CFrame.new(targetBasePart.Position + Vector3.new(0, 3, 0))
 			
-			-- Speed 350 is the perfect balance. Fast, but won't trigger rubberbanding.
 			local distance = (originalCFrame.Position - targetCFrame.Position).Magnitude
 			local speed = 350 
 			local duration = distance / speed
@@ -252,11 +265,8 @@ local function startAutoCrystal()
 			tween.Completed:Wait()
 			
 			hrp.AssemblyLinearVelocity = Vector3.zero
-			
-			-- Wait exactly 0.5s. Enough time for fastTick to fire the remote and the server to accept it.
 			task.wait(0.5) 
 			
-			-- Tween back
 			local tweenBack = tweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = originalCFrame})
 			tweenBack:Play()
 			tweenBack.Completed:Wait()
