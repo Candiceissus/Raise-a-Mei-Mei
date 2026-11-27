@@ -18,7 +18,7 @@ local localPlayer = playersService.LocalPlayer
 
 -- State.
 local connections = {}
-local enabled = { autoClick = false, autoAcorn = false, autoCrystal = false }
+local enabled = { autoClick = false, autoAcorn = false, autoCrystal = false, autoUnpackage = false }
 local isCollectingCrystal = false
 local cachedPetClick = nil
 
@@ -26,6 +26,7 @@ local cachedPetClick = nil
 local lastClickTime = 0
 local lastAcornTime = 0
 local lastCrystalSearch = 0
+local lastUnpackageTime = 0
 
 -- Cleanup function.
 local function destroy()
@@ -36,6 +37,7 @@ local function destroy()
 	enabled.autoClick = false
 	enabled.autoAcorn = false
 	enabled.autoCrystal = false
+	enabled.autoUnpackage = false
 	isCollectingCrystal = false
 	cachedPetClick = nil
 
@@ -151,6 +153,34 @@ local function startAutoClick()
 		if not detector then return end
 		detector.MaxActivationDistance = 9999
 		fireclickdetector(detector)
+	end)
+	table.insert(connections, c)
+	return c
+end
+
+-- Auto Unpackage logic. (Throttled to 10 scans/sec)
+local autoUnpackageConn = nil
+local function startAutoUnpackage()
+	local c = runService.Heartbeat:Connect(function()
+		if os.clock() - lastUnpackageTime < 0.1 then return end
+		lastUnpackageTime = os.clock()
+
+		local meiMeiStuff = workspace:FindFirstChild("MeiMeiStuff")
+		if not meiMeiStuff then return end
+		
+		local packages = meiMeiStuff:FindFirstChild("Packages")
+		if not packages then return end
+
+		for _, package in ipairs(packages:GetChildren()) do
+			local box = package:FindFirstChild("Box")
+			if box then
+				local openClick = box:FindFirstChild("OpenClick")
+				if openClick and openClick:IsA("ClickDetector") then
+					openClick.MaxActivationDistance = 9999
+					fireclickdetector(openClick)
+				end
+			end
+		end
 	end)
 	table.insert(connections, c)
 	return c
@@ -335,7 +365,7 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = game:GetService("CoreGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 220, 0, 169)
+frame.Size = UDim2.new(0, 220, 0, 205) 
 frame.Position = UDim2.new(0.5, -110, 0, 20)
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.BorderSizePixel = 0
@@ -373,10 +403,12 @@ local function makeButton(text, yPos, color)
 	return btn
 end
 
+-- Layout updated
 local autoClickBtn = makeButton("Auto Click", 28)
 local autoAcornBtn = makeButton("Auto Find Acorn", 62)
 local autoCrystalBtn = makeButton("Auto Collect Crystal", 96)
-local balloonBtn = makeButton("Pop Balloons", 130, Color3.fromRGB(160, 40, 40))
+local autoUnpackageBtn = makeButton("Unpackage Boxes", 130)
+local balloonBtn = makeButton("Pop Balloons", 164, Color3.fromRGB(160, 40, 40))
 
 autoClickBtn.MouseButton1Click:Connect(function()
 	enabled.autoClick = not enabled.autoClick
@@ -422,6 +454,22 @@ autoCrystalBtn.MouseButton1Click:Connect(function()
 		if autoCrystalConn then
 			autoCrystalConn:Disconnect()
 			autoCrystalConn = nil
+		end
+	end
+end)
+
+autoUnpackageBtn.MouseButton1Click:Connect(function()
+	enabled.autoUnpackage = not enabled.autoUnpackage
+	if enabled.autoUnpackage then
+		autoUnpackageBtn.Text = "Unpackage Boxes: ON"
+		autoUnpackageBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
+		autoUnpackageConn = startAutoUnpackage()
+	else
+		autoUnpackageBtn.Text = "Unpackage Boxes"
+		autoUnpackageBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+		if autoUnpackageConn then
+			autoUnpackageConn:Disconnect()
+			autoUnpackageConn = nil
 		end
 	end
 end)
