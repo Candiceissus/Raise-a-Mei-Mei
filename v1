@@ -20,6 +20,7 @@ local localPlayer = playersService.LocalPlayer
 local connections = {}
 local enabled = { autoClick = false, autoAcorn = false, autoCrystal = false }
 local isCollectingCrystal = false
+local cachedPetClick = nil -- Used to stop the massive lag spike
 
 -- Cleanup function.
 local function destroy()
@@ -31,6 +32,7 @@ local function destroy()
 	enabled.autoAcorn = false
 	enabled.autoCrystal = false
 	isCollectingCrystal = false
+	cachedPetClick = nil
 
 	local old = game:GetService("CoreGui"):FindFirstChild("RaiseMeiMei")
 	if old then old:Destroy() end
@@ -101,10 +103,32 @@ end))
 
 -- =========================================================================
 
--- Find PetClick under workspace.
+-- Find the ClickDetector for the BIG MeiMei, fallback to PetClick
 local function findPetClick()
+	-- If we already have it cached and it's still there, use it
+	if cachedPetClick and cachedPetClick.Parent then
+		return cachedPetClick
+	end
+	
+	cachedPetClick = nil
+	
+	-- 1. Prioritize the big MeiMei
+	local meiMeiStuff = workspace:FindFirstChild("MeiMeiStuff")
+	if meiMeiStuff then
+		local bigMeiMei = meiMeiStuff:FindFirstChild("MeiMei")
+		if bigMeiMei then
+			local cd = bigMeiMei:FindFirstChildWhichIsA("ClickDetector", true)
+			if cd then
+				cachedPetClick = cd
+				return cd
+			end
+		end
+	end
+
+	-- 2. Fallback: Search everything for PetClick (in case big one is missing)
 	for _, obj in ipairs(workspace:GetDescendants()) do
 		if obj.Name == "PetClick" and obj:IsA("ClickDetector") then
+			cachedPetClick = obj
 			return obj
 		end
 	end
