@@ -12,6 +12,7 @@ end
 local playersService = game:GetService("Players")
 local runService = game:GetService("RunService")
 local virtualUser = game:GetService("VirtualUser") -- [ANTI-AFK]
+local tweenService = game:GetService("TweenService")
 
 local localPlayer = playersService.LocalPlayer
 
@@ -34,16 +35,14 @@ local function destroy()
 	local old = game:GetService("CoreGui"):FindFirstChild("RaiseMeiMei")
 	if old then old:Destroy() end
 
-	shared.RaiseMeiMei = nil -- [ANTI-AFK] stop the watchdog loop
+	shared.RaiseMeiMei = nil 
 end
 
 shared.RaiseMeiMei = { destroy = destroy }
 
--- [ANTI-AFK] 24/7 anti-AFK. Uses Player.Idled (Roblox's own 20-min idle timer)
--- and self-heals if the connection is ever lost.
+-- [ANTI-AFK]
 do
 	local antiAfkConn
-
 	local function kickGuard()
 		if antiAfkConn and antiAfkConn.Connected then return end
 		antiAfkConn = localPlayer.Idled:Connect(function()
@@ -53,10 +52,7 @@ do
 		end)
 		table.insert(connections, antiAfkConn)
 	end
-
 	kickGuard()
-
-	-- Watchdog: re-arm every few seconds until the script is destroyed.
 	task.spawn(function()
 		while shared.RaiseMeiMei do
 			task.wait(5)
@@ -64,6 +60,46 @@ do
 		end
 	end)
 end
+
+-- =========================================================================
+-- [ANTI-CHEAT BYPASS]
+-- =========================================================================
+
+-- 1. Silently destroy any Anti-Cheat scripts the game loaded
+task.spawn(function()
+	for _, v in ipairs(game:GetDescendants()) do
+		if v:IsA("LocalScript") or v:IsA("Script") then
+			local name = v.Name:lower()
+			if name:find("anti") or name:find("cheat") or name:find("security") then
+				pcall(function() v:Destroy() end)
+			end
+		end
+	end
+end)
+
+-- 2. Hook __namecall to block the Anti-Cheat from kicking you
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+	local method = getnamecallmethod()
+	
+	-- Block the anti-cheat from kicking you
+	if method == "Kick" and self == localPlayer then
+		return -- Ignore the kick
+	end
+	
+	return oldNamecall(self, ...)
+end))
+
+-- 3. Hook __index to spoof your WalkSpeed to the server
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+	if key == "WalkSpeed" and self:IsA("Humanoid") then
+		return 16 -- Tell the server we are walking at default speed
+	end
+	return oldIndex(self, key)
+end))
+
+-- =========================================================================
 
 -- Find PetClick under workspace.
 local function findPetClick()
@@ -76,7 +112,6 @@ end
 
 -- Auto Click logic.
 local autoClickConn = nil
-
 local function startAutoClick()
 	local c = runService.Heartbeat:Connect(function()
 		local detector = findPetClick()
@@ -90,7 +125,6 @@ end
 
 -- Auto Find Acorn logic.
 local autoAcornConn = nil
-
 local function startAutoAcorn()
 	local c = runService.Heartbeat:Connect(function()
 		local acornHunt = workspace:FindFirstChild("AcornHunt")
@@ -115,7 +149,7 @@ local function startAutoAcorn()
 	return c
 end
 
--- Auto Collect Crystal logic.
+-- Auto Collect Crystal logic. (Optimized Fast Tween)
 local autoCrystalConn = nil
 
 local function startAutoCrystal()
@@ -124,20 +158,55 @@ local function startAutoCrystal()
 
 		local palace = workspace:FindFirstChild("MeiMeiPalaceLocal")
 		if not palace then return end
-		local crystalsFolder = palace:FindFirstChild("Crystals")
-		if not crystalsFolder then return end
 
-		local hrp = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local character = localPlayer.Character
+		local hrp = character and character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return end
 
 		local targetBasePart = nil
 
-		for _, child in ipairs(crystalsFolder:GetChildren()) do
-			if child.Name == "Crystal" then
-				local basePart = child:FindFirstChild("Base")
-				if basePart and basePart:IsA("BasePart") and basePart.Transparency < 0.9 then
-					targetBasePart = basePart
-					break
+		-- Check Portraits
+		local portraitsFolder = palace:FindFirstChild("Portraits")
+		if portraitsFolder then
+			for _, portrait in ipairs(portraitsFolder:GetChildren()) do
+				if portrait.Name == "Portrait" then
+					local canvas = portrait:FindFirstChild("Canvas")
+					if canvas and canvas:IsA("BasePart") and canvas.Transparency < 0.9 then
+						targetBasePart = canvas
+						break
+					end
+				end
+			end
+		end
+
+		-- Check Meteors
+		if not targetBasePart then
+			local meteorsFolder = palace:FindFirstChild("Meteors")
+			if meteorsFolder then
+				for _, meteor in ipairs(meteorsFolder:GetChildren()) do
+					if meteor.Name == "Meteor" then
+						local mainPart = meteor:FindFirstChildWhichIsA("BasePart")
+						if mainPart and mainPart.Transparency < 0.9 then
+							targetBasePart = mainPart
+							break
+						end
+					end
+				end
+			end
+		end
+
+		-- Check Crystals
+		if not targetBasePart then
+			local crystalsFolder = palace:FindFirstChild("Crystals")
+			if crystalsFolder then
+				for _, child in ipairs(crystalsFolder:GetChildren()) do
+					if child.Name == "Crystal" then
+						local basePart = child:FindFirstChild("Base")
+						if basePart and basePart:IsA("BasePart") and basePart.Transparency < 0.9 then
+							targetBasePart = basePart
+							break
+						end
+					end
 				end
 			end
 		end
@@ -147,20 +216,28 @@ local function startAutoCrystal()
 		isCollectingCrystal = true
 		task.spawn(function()
 			local originalCFrame = hrp.CFrame
-
-			-- Teleport to the crystal.
-			hrp.CFrame = CFrame.new(targetBasePart.Position + Vector3.new(0, 3, 0))
-			task.wait(0.2)
-
-			-- Trigger the touch.
-			firetouchinterest(targetBasePart, hrp, 0)
-			task.wait(0.5)
-
-			-- Return to original spot.
-			if hrp and hrp.Parent then
-				hrp.CFrame = originalCFrame
-			end
-
+			local targetCFrame = CFrame.new(targetBasePart.Position + Vector3.new(0, 3, 0))
+			
+			-- Speed 350 is the perfect balance. Fast, but won't trigger rubberbanding.
+			local distance = (originalCFrame.Position - targetCFrame.Position).Magnitude
+			local speed = 350 
+			local duration = distance / speed
+			
+			local tween = tweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
+			tween:Play()
+			tween.Completed:Wait()
+			
+			hrp.AssemblyLinearVelocity = Vector3.zero
+			
+			-- Wait exactly 0.5s. Enough time for fastTick to fire the remote and the server to accept it.
+			task.wait(0.5) 
+			
+			-- Tween back
+			local tweenBack = tweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = originalCFrame})
+			tweenBack:Play()
+			tweenBack.Completed:Wait()
+			
+			task.wait(0.1)
 			isCollectingCrystal = false
 		end)
 	end)
